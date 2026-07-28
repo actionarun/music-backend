@@ -1,12 +1,16 @@
-# Sur — Music Streaming App (Frontend)
+# Music Streaming App — Backend
 
-A MERN-stack music streaming application frontend, built with React, Vite, TailwindCSS, and Context API for state management.
+Node.js + Express + MongoDB backend for a MERN Music Streaming App.
 
-## Live Demo
+## Live API
+https://music-backend-6990.onrender.com/api
 
-Frontend: https://storied-lily-fc7a92.netlify.app/
-Backend API: https://music-backend-6990.onrender.com/api
+## Setup
 
-## Demo Credentials
+npm install
+cp .env.example .env   # fill in your own values
+npm run dev
 
-Use this account to test the app without signing up:
+
+## API Documentation
+See routes list below / Postman collection.
