@@ -1,14 +1,27 @@
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
+
+// Absolute paths — independent of where the process is run from
+const songsDir = path.join(__dirname, "..", "uploads", "songs");
+const coversDir = path.join(__dirname, "..", "uploads", "covers");
+
+// Ensure upload folders exist at runtime (Render's filesystem won't have them otherwise)
+if (!fs.existsSync(songsDir)) {
+  fs.mkdirSync(songsDir, { recursive: true });
+}
+if (!fs.existsSync(coversDir)) {
+  fs.mkdirSync(coversDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     if (file.fieldname === "audioFile") {
-      cb(null, "uploads/songs");
+      cb(null, songsDir);
     } else if (file.fieldname === "coverImage") {
-      cb(null, "uploads/covers");
+      cb(null, coversDir);
     } else {
-      cb(null, "uploads");
+      cb(null, path.join(__dirname, "..", "uploads"));
     }
   },
   filename: (req, file, cb) => {

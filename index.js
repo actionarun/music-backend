@@ -17,15 +17,12 @@ const app = express();
 
 // Allowed origins — add every frontend URL that needs access here
 const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (like Postman, curl, mobile apps)
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
