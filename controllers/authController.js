@@ -30,34 +30,15 @@ const signup = async (req, res) => {
       email,
       password,
       preferences: { genres: genres || [] },
+      isVerified: true, // auto-verify, skip email verification step
     });
 
-    // generate verification token
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    user.verificationToken = hashToken(rawToken);
-    user.verificationTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hrs
-    await user.save({ validateBeforeSave: false });
-
-    const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${rawToken}`;
-
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: "Verify your Music App account",
-        html: `<p>Hi ${user.name},</p>
-               <p>Click below to verify your account:</p>
-               <a href="${verifyUrl}">${verifyUrl}</a>
-               <p>This link expires in 24 hours.</p>`,
-      });
-    } catch (mailErr) {
-      console.error("Email send failed:", mailErr.message);
-    }
-
     res.status(201).json({
-      message: "Signup successful. Please check your email to verify your account.",
+      message: "Signup successful. You can log in now.",
       _id: user._id,
       name: user.name,
       email: user.email,
+      token: generateToken(user._id),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
