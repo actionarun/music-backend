@@ -3,6 +3,7 @@ const path = require("path");
 const Song = require("../models/Song");
 const User = require("../models/User");
 
+
 const createSong = async (req, res) => {
   try {
     const { title, artist, album, movie, genre, duration, releaseYear, downloadable } = req.body;
@@ -14,10 +15,9 @@ const createSong = async (req, res) => {
       return res.status(400).json({ message: "Audio file is required" });
     }
 
-    const audioFile = `/uploads/songs/${req.files.audioFile[0].filename}`;
-    const coverImage = req.files.coverImage
-      ? `/uploads/covers/${req.files.coverImage[0].filename}`
-      : "";
+    // Cloudinary returns the full hosted URL in file.path
+    const audioFile = req.files.audioFile[0].path;
+    const coverImage = req.files.coverImage ? req.files.coverImage[0].path : "";
 
     const song = await Song.create({
       title,
@@ -109,41 +109,8 @@ const streamSong = async (req, res) => {
     const song = await Song.findById(req.params.id);
     if (!song) return res.status(404).json({ message: "Song not found" });
 
-    const filePath = path.join(__dirname, "..", song.audioFile);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "Audio file not found on server" });
-    }
-
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
-
-    // Explicit CORS headers for cross-origin audio streaming
-    res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-    res.setHeader("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
-
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunkSize = end - start + 1;
-      const fileStream = fs.createReadStream(filePath, { start, end });
-
-      res.writeHead(206, {
-        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-        "Accept-Ranges": "bytes",
-        "Content-Length": chunkSize,
-        "Content-Type": "audio/mpeg",
-      });
-      fileStream.pipe(res);
-    } else {
-      res.writeHead(200, {
-        "Content-Length": fileSize,
-        "Content-Type": "audio/mpeg",
-        "Accept-Ranges": "bytes",
-      });
-      fs.createReadStream(filePath).pipe(res);
-    }
+    // Redirect to the Cloudinary-hosted file — Cloudinary handles range requests natively
+    res.redirect(song.audioFile);
 
     Song.findByIdAndUpdate(req.params.id, { $inc: { plays: 1 } }).exec();
   } catch (error) {
@@ -160,16 +127,13 @@ const downloadSong = async (req, res) => {
       return res.status(403).json({ message: "This song is not available for download" });
     }
 
-    const filePath = path.join(__dirname, "..", song.audioFile);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "Audio file not found on server" });
-    }
-
-    res.download(filePath, `${song.artist} - ${song.title}${path.extname(filePath)}`);
+    res.redirect(song.audioFile);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 const toggleLikeSong = async (req, res) => {
   try {
