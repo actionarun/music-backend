@@ -118,6 +118,10 @@ const streamSong = async (req, res) => {
     const fileSize = stat.size;
     const range = req.headers.range;
 
+    // Explicit CORS headers for cross-origin audio streaming
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.setHeader("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
+
     if (range) {
       const parts = range.replace(/bytes=/, "").split("-");
       const start = parseInt(parts[0], 10);
