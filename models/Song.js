@@ -29,5 +29,4 @@ const songSchema = new mongoose.Schema(
 );
 
 songSchema.index({ title: "text", artist: "text", album: "text", movie: "text" });
-
 module.exports = mongoose.model("Song", songSchema);

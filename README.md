@@ -51,3 +51,12 @@ backend/
 ├── utils/sendEmail.js # Nodemailer wrapper
 ├── uploads/songs, uploads/covers # Uploaded files (created at runtime)
 └── index.js # App entry point
+
+
+## Why Brevo instead of Nodemailer
+
+Nodemailer uses direct SMTP connections, and cloud platforms like Render/Vercel free tiers 
+often block outbound SMTP ports (587/465), causing emails to silently fail in production 
+even though they work locally. Brevo's transactional email API works over standard HTTPS, 
+so it works reliably in any deployment environment. Email verification is enforced before 
+login — there is no bypass in this version.

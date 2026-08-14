@@ -11,7 +11,7 @@ const generateToken = (id) => {
 
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
-//  Register new user + send verification email
+// @desc  Register new user + send verification email
 const signup = async (req, res) => {
   try {
     const { name, email, password, genres } = req.body;
@@ -30,22 +30,40 @@ const signup = async (req, res) => {
       email,
       password,
       preferences: { genres: genres || [] },
-      isVerified: true, // auto-verify, skip email verification step
     });
 
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    user.verificationToken = hashToken(rawToken);
+    user.verificationTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hrs
+    await user.save({ validateBeforeSave: false });
+
+    const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${rawToken}`;
+
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: "Verify your Music App account",
+        html: `<p>Hi ${user.name},</p>
+               <p>Click below to verify your account:</p>
+               <a href="${verifyUrl}">${verifyUrl}</a>
+               <p>This link expires in 24 hours.</p>`,
+      });
+    } catch (mailErr) {
+      console.error("Email send failed:", mailErr.message);
+    }
+
     res.status(201).json({
-      message: "Signup successful. You can log in now.",
+      message: "Signup successful. Please check your email to verify your account.",
       _id: user._id,
       name: user.name,
       email: user.email,
-      token: generateToken(user._id),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-//  Verify email via token
+// @desc  Verify email via token
 const verifyEmail = async (req, res) => {
   try {
     const hashed = hashToken(req.params.token);
@@ -70,7 +88,7 @@ const verifyEmail = async (req, res) => {
   }
 };
 
-//   Login user
+// @desc  Login user
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -101,7 +119,7 @@ const login = async (req, res) => {
   }
 };
 
-// Forgot password - send reset link
+// @desc  Forgot password - send reset link
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -132,7 +150,7 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-//  Reset password
+// @desc  Reset password
 const resetPassword = async (req, res) => {
   try {
     const { password } = req.body;
