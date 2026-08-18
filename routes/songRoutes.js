@@ -5,6 +5,8 @@ const {
   getSongs,
   searchSongs,
   getSongById,
+  updateSong,
+  deleteSong,
   streamSong,
   downloadSong,
   toggleLikeSong,
@@ -25,6 +27,9 @@ router.post(
 );
 
 router.get("/:id", getSongById);
+router.put("/:id", protect, updateSong);       // NEW
+router.delete("/:id", protect, deleteSong);    // NEW
+
 router.get("/:id/stream", streamSong);
 router.get("/:id/download", protect, downloadSong);
 router.put("/:id/like", protect, toggleLikeSong);
