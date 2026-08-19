@@ -82,12 +82,19 @@ const verifyEmail = async (req, res) => {
     user.verificationTokenExpire = undefined;
     await user.save({ validateBeforeSave: false });
 
-    res.json({ message: "Email verified successfully. You can now log in." });
+    // Auto-login: issue a JWT right away so the frontend can log the user in immediately
+    res.json({
+      message: "Email verified successfully.",
+      token: generateToken(user._id),
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      preferences: user.preferences,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-
 // @desc  Login user
 const login = async (req, res) => {
   try {
