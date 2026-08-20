@@ -4,6 +4,8 @@ const {
   createSong,
   getSongs,
   searchSongs,
+  getMySongs,
+  getLikedSongs,
   getSongById,
   updateSong,
   deleteSong,
@@ -19,6 +21,10 @@ const upload = require("../middleware/uploadMiddleware");
 router.get("/", optionalAuth, getSongs);
 router.get("/search", searchSongs);
 
+// must be registered before "/:id" — otherwise "mine" gets treated as an ID
+router.get("/mine/uploaded", protect, getMySongs);
+router.get("/mine/liked", protect, getLikedSongs);
+
 router.post(
   "/",
   protect,
@@ -27,8 +33,8 @@ router.post(
 );
 
 router.get("/:id", getSongById);
-router.put("/:id", protect, updateSong);       // NEW
-router.delete("/:id", protect, deleteSong);    // NEW
+router.put("/:id", protect, updateSong);
+router.delete("/:id", protect, deleteSong);
 
 router.get("/:id/stream", streamSong);
 router.get("/:id/download", protect, downloadSong);

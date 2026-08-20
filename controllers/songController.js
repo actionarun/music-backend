@@ -1,8 +1,11 @@
 const fs = require("fs");
 const path = require("path");
+const axios = require("axios");
 const Song = require("../models/Song");
 const User = require("../models/User");
 const Playlist = require("../models/Playlist");
+
+const isValidId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
 const createSong = async (req, res) => {
   try {
@@ -29,7 +32,7 @@ const createSong = async (req, res) => {
       downloadable: downloadable !== "false",
       audioFile,
       coverImage,
-      uploadedBy: req.user._id,
+      uploadedBy: req.user._id, // ownership always comes from the authenticated user, never from the request body
     });
 
     res.status(201).json(song);
@@ -55,7 +58,6 @@ const getSongs = async (req, res) => {
       .limit(Number(limit));
 
     const total = await Song.countDocuments(query);
-
     res.json({ songs, total, page: Number(page), pages: Math.ceil(total / limit) });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -65,12 +67,9 @@ const getSongs = async (req, res) => {
 const searchSongs = async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q) {
-      return res.status(400).json({ message: "Search query 'q' is required" });
-    }
+    if (!q) return res.status(400).json({ message: "Search query 'q' is required" });
 
     const regex = new RegExp(q, "i");
-
     const songs = await Song.find({
       $or: [{ title: regex }, { artist: regex }, { album: regex }, { movie: regex }],
     }).limit(50);
@@ -81,15 +80,30 @@ const searchSongs = async (req, res) => {
   }
 };
 
-// GET /api/songs/:id — handles invalid/missing IDs cleanly
+// NEW — GET /api/songs/mine/uploaded — songs uploaded by the logged-in user only
+const getMySongs = async (req, res) => {
+  try {
+    const songs = await Song.find({ uploadedBy: req.user._id }).sort({ createdAt: -1 });
+    res.json(songs);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// NEW — GET /api/songs/mine/liked — full song details for the logged-in user's liked songs
+const getLikedSongs = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate("likedSongs");
+    res.json(user.likedSongs);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const getSongById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Guard against malformed ObjectIds (prevents a 500 crash on bad URLs)
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ message: "Invalid song ID" });
-    }
+    if (!isValidId(id)) return res.status(400).json({ message: "Invalid song ID" });
 
     const song = await Song.findById(id).populate("comments.user", "name avatar");
     if (!song) return res.status(404).json({ message: "Song not found" });
@@ -99,19 +113,20 @@ const getSongById = async (req, res) => {
   }
 };
 
-// PUT /api/songs/:id — NEW: update song metadata
+// Ownership check helper — strict: uploadedBy must exist AND match the authenticated user
+const assertOwnership = (song, userId) => {
+  return song.uploadedBy && song.uploadedBy.toString() === userId.toString();
+};
+
 const updateSong = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ message: "Invalid song ID" });
-    }
+    if (!isValidId(id)) return res.status(400).json({ message: "Invalid song ID" });
 
     const song = await Song.findById(id);
     if (!song) return res.status(404).json({ message: "Song not found" });
 
-    // Permission: only the uploader can edit. Legacy/seeded songs (no uploadedBy) are editable by any logged-in user.
-    if (song.uploadedBy && song.uploadedBy.toString() !== req.user._id.toString()) {
+    if (!assertOwnership(song, req.user._id)) {
       return res.status(403).json({ message: "Not authorized to edit this song" });
     }
 
@@ -127,24 +142,19 @@ const updateSong = async (req, res) => {
   }
 };
 
-// DELETE /api/songs/:id — NEW: delete song + clean up references
 const deleteSong = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ message: "Invalid song ID" });
-    }
+    if (!isValidId(id)) return res.status(400).json({ message: "Invalid song ID" });
 
     const song = await Song.findById(id);
     if (!song) return res.status(404).json({ message: "Song not found" });
 
-    if (song.uploadedBy && song.uploadedBy.toString() !== req.user._id.toString()) {
+    if (!assertOwnership(song, req.user._id)) {
       return res.status(403).json({ message: "Not authorized to delete this song" });
     }
 
     await song.deleteOne();
-
-    // Clean up references so deleted songs don't linger in playlists/likes
     await Playlist.updateMany({ songs: id }, { $pull: { songs: id } });
     await User.updateMany({ likedSongs: id }, { $pull: { likedSongs: id } });
 
@@ -162,13 +172,11 @@ const streamSong = async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
     res.setHeader("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
 
-    // Cloudinary/external URLs — redirect and let the host serve the range request
     if (song.audioFile.startsWith("http")) {
       Song.findByIdAndUpdate(req.params.id, { $inc: { plays: 1 } }).exec();
       return res.redirect(song.audioFile);
     }
 
-    // Legacy local file fallback
     const filePath = path.join(__dirname, "..", song.audioFile);
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: "Audio file not found on server" });
@@ -207,6 +215,9 @@ const streamSong = async (req, res) => {
   }
 };
 
+// FIXED — proxy-streams the file through our backend instead of redirecting,
+// so the browser only ever talks to our (authenticated) API, never directly to Cloudinary.
+// This is what makes the Authorization header meaningful for downloads.
 const downloadSong = async (req, res) => {
   try {
     const song = await Song.findById(req.params.id);
@@ -215,15 +226,22 @@ const downloadSong = async (req, res) => {
       return res.status(403).json({ message: "This song is not available for download" });
     }
 
+    const safeName = `${song.artist} - ${song.title}`.replace(/[^\w\s-]/g, "");
+
     if (song.audioFile.startsWith("http")) {
-      return res.redirect(song.audioFile);
+      const response = await axios.get(song.audioFile, { responseType: "stream" });
+      const ext = song.audioFile.split(".").pop().split("?")[0] || "mp3";
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}.${ext}"`);
+      res.setHeader("Content-Type", response.headers["content-type"] || "audio/mpeg");
+      response.data.pipe(res);
+      return;
     }
 
     const filePath = path.join(__dirname, "..", song.audioFile);
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: "Audio file not found on server" });
     }
-    res.download(filePath, `${song.artist} - ${song.title}${path.extname(filePath)}`);
+    res.download(filePath, `${safeName}${path.extname(filePath)}`);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -257,9 +275,7 @@ const toggleLikeSong = async (req, res) => {
 const addComment = async (req, res) => {
   try {
     const { text } = req.body;
-    if (!text || !text.trim()) {
-      return res.status(400).json({ message: "Comment text is required" });
-    }
+    if (!text || !text.trim()) return res.status(400).json({ message: "Comment text is required" });
 
     const song = await Song.findById(req.params.id);
     if (!song) return res.status(404).json({ message: "Song not found" });
@@ -298,6 +314,8 @@ module.exports = {
   createSong,
   getSongs,
   searchSongs,
+  getMySongs,
+  getLikedSongs,
   getSongById,
   updateSong,
   deleteSong,
