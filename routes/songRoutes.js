@@ -21,6 +21,8 @@ const upload = require("../middleware/uploadMiddleware");
 router.get("/", optionalAuth, getSongs);
 router.get("/search", searchSongs);
 
+
+
 // must be registered before "/:id" — otherwise "mine" gets treated as an ID
 router.get("/mine/uploaded", protect, getMySongs);
 router.get("/mine/liked", protect, getLikedSongs);
